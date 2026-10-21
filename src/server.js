@@ -18,7 +18,7 @@ function send(res, status, payload) {
 }
 
 function readJson(req, limit) {
-  if (!/^application\\/json(?:\\s*;|\\s*$)/i.test(String(req.headers["content-type"] || ""))) {
+  if (!/^application\/json(?:\s*;|\s*$)/i.test(String(req.headers["content-type"] || ""))) {
     return Promise.resolve({ status: 415, error: "JSON content type required" });
   }
   return new Promise((resolve) => {
