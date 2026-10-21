@@ -87,3 +87,43 @@ test("API verifies bearer tokens, enforces private ownership, and persists recor
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("startup rejects malformed or non-RSA identity keys before opening the database", () => {
+  const dir = mkdtempSync(join(tmpdir(), "devora-keys-"));
+  try {
+    const path = join(dir, "store.sqlite");
+    assert.throws(() => createDevoraServer({ databasePath: path, identity: { ...identity, publicKeyPem: "not-a-public-key" } }), /RSA public key/);
+    const { publicKey: ecPublicKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+    assert.throws(() => createDevoraServer({ databasePath: path, identity: { ...identity, publicKeyPem: ecPublicKey.export({ type: "spki", format: "pem" }) } }), /RSA public key/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("an oversized streaming request receives 413 before the client finishes uploading", async () => {
+  const { request: httpRequest } = await import("node:http");
+  const dir = mkdtempSync(join(tmpdir(), "devora-stream-"));
+  const server = createDevoraServer({ databasePath: join(dir, "store.sqlite"), identity, maxBodyBytes: 512 });
+  try {
+    const base = await listening(server);
+    const { hostname, port } = new URL(base);
+    const status = await new Promise((resolve, reject) => {
+      const req = httpRequest({ hostname, port, method: "POST", path: "/projects", headers: {
+        authorization: "Bearer " + token("alice"),
+        "content-type": "application/json",
+        "transfer-encoding": "chunked"
+      } }, response => {
+        resolve(response.statusCode);
+        response.resume();
+      });
+      req.on("error", reject);
+      req.write("x".repeat(1024)); // Leave the upload open; server must not await EOF.
+    });
+    assert.equal(status, 413);
+  } finally {
+    // Connections can be half-open after early rejection. Force-close test connections.
+    server.closeAllConnections();
+    await stop(server);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
