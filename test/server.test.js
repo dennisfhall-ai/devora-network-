@@ -46,6 +46,8 @@ async function request(base, path, { principal, method = "GET", body, contentTyp
 test("API fails closed without trusted identity and persistent database path", () => {
   assert.throws(() => createDevoraServer({ databasePath: ":memory:" }), /identity/);
   assert.throws(() => createDevoraServer({ identity }), /Database path/);
+  assert.throws(() => createDevoraServer({ identity, databasePath: ":memory:" }), /persistent database/);
+  assert.throws(() => createDevoraServer({ identity, databasePath: "file::memory:?cache=shared" }), /persistent database/);
 });
 test("API verifies bearer tokens, enforces private ownership, and persists records", async () => {
   const dir = mkdtempSync(join(tmpdir(), "devora-server-"));
