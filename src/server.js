@@ -61,6 +61,11 @@ export function createDevoraServer({ databasePath, identity, maxBodyBytes = MAX_
     throw new TypeError("Trusted identity configuration required");
   }
   if (typeof databasePath !== "string" || !databasePath.trim()) throw new TypeError("Database path required");
+  // Reject in-memory SQLite database identifiers: an accidental transient store must never
+  // masquerade as durable production storage.
+  if (databasePath.trim() === ":memory:" || /^file:/i.test(databasePath.trim())) {
+    throw new TypeError("A persistent database file path is required");
+  }
   if (!Number.isSafeInteger(maxBodyBytes) || maxBodyBytes < 256 || maxBodyBytes > 65536) throw new TypeError("Invalid body limit");
   const registry = createPersistentRegistry(databasePath);
 
