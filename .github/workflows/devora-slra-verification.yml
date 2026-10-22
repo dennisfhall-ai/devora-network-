@@ -21,15 +21,21 @@ jobs:
         with:
           ref: main
           persist-credentials: false
-      - name: Validate exact SHA and operator intent
+      - name: Validate exact SHA, workflow definition and operator intent
+        id: admission
         env:
           EXPECTED_SHA: ${{ inputs.expected_main_sha }}
+          VERIFIED_WORKFLOW_SHA: ${{ github.workflow_sha }}
         run: |
           node --input-type=module -e '
             import {execFileSync} from "node:child_process";
             const expected = process.env.EXPECTED_SHA || "";
             const actual = execFileSync("git", ["rev-parse","HEAD"], {encoding:"utf8"}).trim();
             const repository = process.env.GITHUB_REPOSITORY;
+            const workflowRef = process.env.GITHUB_REF;
+            const workflowSha = process.env.VERIFIED_WORKFLOW_SHA;
+            if (workflowRef !== "refs/heads/main") throw Error("Workflow must dispatch from main");
+            if (!/^[a-f0-9]{40}$/.test(workflowSha) || workflowSha !== actual) throw Error("Workflow definition/source revision mismatch");
             if (repository !== "dennisfhall-ai/devora-network-") throw Error("Wrong repository");
             if (!/^[a-f0-9]{40}$/.test(expected) || expected !== actual) throw Error("SHA mismatch or malformed requested revision");
             console.log("Verified exact source revision: " + actual);
@@ -38,21 +44,21 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
-      - name: Run protected Devora suite and write local evidence
+      - name: Run protected Devora test suite
         id: suite
         shell: bash
         run: |
           set +e
-          npm test > devora-test-output.log 2>&1
+          npm test
           result=$?
           printf '%s\n' "$result" > devora-test-exit-code.txt
-          cat devora-test-output.log
           exit "$result"
       - name: Write nonprivileged receipt
-        if: always()
+        if: always() && steps.admission.outcome == 'success'
         env:
           TEST_OUTCOME: ${{ steps.suite.outcome }}
           EXPECTED_SHA: ${{ inputs.expected_main_sha }}
+          VERIFIED_WORKFLOW_SHA: ${{ github.workflow_sha }}
         run: |
           node --input-type=module -e '
             import {writeFileSync,existsSync,readFileSync} from "node:fs";
@@ -66,6 +72,7 @@ jobs:
               commit_sha:sha,
               expected_main_sha:process.env.EXPECTED_SHA,
               workflow_run_id:process.env.GITHUB_RUN_ID,
+              workflow_definition_sha:process.env.VERIFIED_WORKFLOW_SHA,
               event:process.env.GITHUB_EVENT_NAME,
               outcome:process.env.TEST_OUTCOME,
               exit_code:Number.isInteger(code)?code:null,
@@ -76,12 +83,11 @@ jobs:
             writeFileSync("devora-verification-receipt.json",JSON.stringify(receipt,null,2)+"\n");
           '
       - name: Upload audit evidence (no credentials)
-        if: always()
-        uses: actions/upload-artifact@v4
+        if: always() && steps.admission.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: devora-verification-${{ github.run_id }}
           path: |
             devora-verification-receipt.json
             devora-test-exit-code.txt
-            devora-test-output.log
           retention-days: 14
