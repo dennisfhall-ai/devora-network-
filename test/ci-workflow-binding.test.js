@@ -94,7 +94,7 @@ test('recorded exit code parser rejects malformed or implausible values', () => 
 });
 
 test('workflow pins real PR head and external actions, and cannot upload raw logs', () => {
-  assert.match(workflow, /pull_request:/);
+  assert.match(triggerWorkflow, /pull_request:/);
   assert.match(workflow, /ref: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/);
   assert.match(workflow, /DEVORA_EXPECTED_SHA: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/);
   assert.match(workflow, /GITHUB_WORKFLOW_SHA: \$\{\{ github\.workflow_sha \}\}/);
