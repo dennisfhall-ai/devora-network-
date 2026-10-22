@@ -2,7 +2,7 @@ name: Devora trusted verification suite
 on:
   workflow_call:
 
-# Called workflow executes tested source at an exact SHA. No writes or secrets.
+# Read-only called workflow verifies tested source at the exact PR SHA.
 permissions:
   contents: read
 
