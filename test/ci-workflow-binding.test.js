@@ -108,3 +108,19 @@ test('workflow pins real PR head and external actions, and cannot upload raw log
   assert.doesNotMatch(workflow, /devora-test-output\.log/);
   assert.doesNotMatch(workflow, /secrets\./);
 });
+
+test('GitHub Actions refuses evidence upload when receipt creation fails', () => {
+  const record = workflow.split('      - name: Record test revision, outcome and nonrelease status\n')[1]?.split('      - name: Retain bounded test receipt without raw logs or secrets\n')[0];
+  const upload = workflow.split('      - name: Retain bounded test receipt without raw logs or secrets\n')[1];
+  assert.ok(record, 'recording step exists');
+  assert.ok(upload, 'upload step exists');
+  assert.match(record, /(?:^|\n)\s*id: receipt\s*(?:\n|$)/);
+  assert.match(record, /steps\.admission\.outcome == 'success'/);
+  assert.match(upload, /steps\.admission\.outcome == 'success'/);
+  assert.match(upload, /steps\.receipt\.outcome == 'success'/);
+  assert.match(upload, /steps\.suite\.outcome != 'skipped'/);
+  assert.doesNotMatch(upload, /steps\.suite\.outcome == 'success'/);
+  assert.match(upload, /if-no-files-found: error/);
+  // The upload condition must depend on successful receipt generation, not merely its existence.
+  assert.match(upload, /if: \$\{\{ always\(\) && steps\.admission\.outcome == 'success' && steps\.receipt\.outcome == 'success' && steps\.suite\.outcome != 'skipped' \}\}/);
+});
