@@ -6,7 +6,8 @@ import { resolve, dirname } from 'node:path';
 import { verifyTestedRevision, makeNonreleaseReceipt, parseExitCode } from '../scripts/devora-ci-revision.mjs';
 
 const cwd = dirname(fileURLToPath(import.meta.url));
-const workflow = readFileSync(resolve(cwd, '../.github/workflows/devora-verify.yml'), 'utf8');
+const triggerWorkflow = readFileSync(resolve(cwd, '../.github/workflows/devora-verify.yml'), 'utf8');
+const workflow = readFileSync(resolve(cwd, '../.github/workflows/devora-trusted-verify.yml'), 'utf8');
 const SOURCE_SHA = 'a'.repeat(40);
 const WORKFLOW_SHA = 'b'.repeat(40);
 const otherSHA = 'c'.repeat(40);
@@ -123,4 +124,17 @@ test('GitHub Actions refuses evidence upload when receipt creation fails', () =>
   assert.match(upload, /if-no-files-found: error/);
   // The upload condition must depend on successful receipt generation, not merely its existence.
   assert.match(upload, /if: \$\{\{ always\(\) && steps\.admission\.outcome == 'success' && steps\.receipt\.outcome == 'success' && steps\.suite\.outcome != 'skipped' \}\}/);
+});
+
+test('the public trigger delegates only to GitHub-attested reusable verification', () => {
+  assert.match(triggerWorkflow, /pull_request:/);
+  assert.match(triggerWorkflow, /permissions:\n  contents: read/);
+  assert.match(triggerWorkflow, /uses: \.\/\.github\/workflows\/devora-trusted-verify\.yml/);
+  assert.match(workflow, /workflow_call:/);
+  assert.match(workflow, /permissions:\n  contents: read/);
+  assert.doesNotMatch(triggerWorkflow, /npm test/);
+  assert.doesNotMatch(triggerWorkflow, /secrets\./);
+  assert.doesNotMatch(triggerWorkflow, /actions\/checkout@/);
+  assert.match(workflow, /steps\.receipt\.outcome == 'success'/);
+  assert.match(workflow, /scripts\/devora-ci-revision\.mjs verify/);
 });
