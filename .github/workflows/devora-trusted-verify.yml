@@ -1,0 +1,58 @@
+name: Devora trusted verification suite
+on:
+  workflow_call:
+
+# Called workflow executes tested source at an exact SHA. No writes or secrets.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DEVORA_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      DEVORA_PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+      DEVORA_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+      GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
+    steps:
+      - name: Checkout exact PR head or event commit, never a synthetic merge
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Verify source revision before tests
+        id: admission
+        run: node scripts/devora-ci-revision.mjs verify
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install --ignore-scripts; fi
+      - name: Run Devora tests
+        id: suite
+        shell: bash
+        run: |
+          set +e
+          npm test
+          result=$?
+          printf '%s\n' "$result" > devora-test-exit-code.txt
+          exit "$result"
+      - name: Record test revision, outcome and nonrelease status
+        id: receipt
+        if: ${{ always() && steps.admission.outcome == 'success' }}
+        env:
+          DEVORA_TEST_OUTCOME: ${{ steps.suite.outcome }}
+        run: node scripts/devora-ci-revision.mjs receipt
+      - name: Retain bounded test receipt without raw logs or secrets
+        if: ${{ always() && steps.admission.outcome == 'success' && steps.receipt.outcome == 'success' && steps.suite.outcome != 'skipped' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: devora-tested-revision-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            devora-tested-revision-receipt.json
+            devora-test-exit-code.txt
+          if-no-files-found: error
+          retention-days: 14
