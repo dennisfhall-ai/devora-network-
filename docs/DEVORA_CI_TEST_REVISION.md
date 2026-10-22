@@ -4,11 +4,11 @@
 
 Previously, the pull-request test workflow used the default `actions/checkout` ref. On a `pull_request` event that ref is typically `refs/pull/<number>/merge`, a **synthetic merge commit**, not the candidate PR's immutable head commit. A GitHub Actions job associated with PR head `d1705854...` was therefore testing a different tree. A job's `head_sha` alone cannot establish which checkout was tested.
 
-This file documents the repository-side correction proposed under work claim #11. It is **nonproduction CI**, not a replacement for the Headquarters SLRA verification-intake code owned by claim #319, and does not overlap the separate Base44 platform build.
+The exact-PR-head checkout fix was merged under claim #11. Under new work claim #15, the public trigger delegates to a separate reusable workflow so GitHub can attest the **historical executed reusable workflow SHA** to the SLRA observer. This remains **nonproduction CI**, not a replacement for the Headquarters SLRA verification-intake code owned by claim #319, and does not overlap the separate Base44 platform build.
 
 ## Verification semantics
 
-The `.github/workflows/devora-verify.yml` workflow runs on main-branch pushes, same-repository pull requests, and manually dispatched runs selected from `main`. It:
+The `.github/workflows/devora-verify.yml` trigger runs on main-branch pushes, same-repository pull requests, and manual runs on `main`. It delegates its single job to `.github/workflows/devora-trusted-verify.yml` through GitHub's reusable-workflow mechanism. That called workflow:
 
 1. Uses immutable commit-pinned `actions/checkout`, `actions/setup-node` and `actions/upload-artifact` actions.
 2. For pull requests, checks out `github.event.pull_request.head.sha` **explicitly** instead of GitHub's synthetic merge commit. For main pushes and manual main dispatch, checks out `github.sha`. Fork-origin pull requests fail closed in this candidate.
@@ -19,16 +19,16 @@ The `.github/workflows/devora-verify.yml` workflow runs on main-branch pushes, s
 
 ## Limits and review controls
 
-- The receipt is **self-reported GitHub Actions test evidence**, not a cryptographic signature by an independent SLRA worker. Independent verification must inspect the trusted workflow definition at `workflow_definition_sha`, the captured run attempt, the recorded checkout identity and the result.
+- The receipt is **self-reported GitHub Actions test evidence**, not a cryptographic signature by an independent SLRA worker. GitHub REST run-attempt metadata must include exactly one provider-issued `referenced_workflows[]` entry for the reusable suite, with an immutable historical `sha`. An independent observer verifies that executed suite file's Git blob SHA matches the trusted reviewed suite file on `main`, and separately validates the caller/head script and guarded test/receipt steps. The self-reported `workflow_definition_sha` field by itself is NOT proof of the workflow code that executed.
 - PR-head testing does **not** evaluate whether the candidate merges cleanly with the latest main. Branch mergeability and any additional integration suite are separate gates.
 - The workflow under review could itself be changed by a PR. The runner's evidence is not a substitute for human review of that changed workflow and the underlying trust boundary.
 - A check in progress, failed, skipped or missing its exit code cannot be represented as a successful completed suite.
 - No automatic merge, deployment, banking, grant disbursement, token issuance, paid service, Base44 publication or SLRA mission start is authorized by this workflow.
-- PR #5 still requires independent qualified human security approval. The Headquarters read-only SLRA intake PR #320 needs independent remediation and a separately authorized deployment before it can produce a genuine Devora observation.
+- PR #5 still requires independent qualified human security approval and updated exact-head test evidence. The Headquarters read-only SLRA intake corrective PR #325 needs independent review and a separately authorized deployment before a genuine Devora observation is possible.
 - Changes stay in a feature branch until exact-head GitHub CI, independent non-author review and explicit owner/governance merge authorization.
 
 ## Practical confirmation after an authorized merge
 
-In GitHub open **Devora → Actions → Devora verification** and inspect a completed `pull_request` run. The test receipt's `tested_sha` must match the PR head SHA, not the synthetic merge SHA. The receipt's `run_id` and `run_attempt` must match the same Actions run. A passing result means only that the checked-out commit passed the included tests.
+In GitHub open **Devora → Actions → Devora verification** and inspect a completed `pull_request` run. The test receipt's `tested_sha` must match the PR head SHA, not the synthetic merge SHA. The receipt's `run_id` and `run_attempt` must match the same Actions run. GitHub's API should additionally expose `referenced_workflows[].sha` for `devora-trusted-verify.yml` in the captured attempt, allowing the observer to verify the actual historical suite definition against the trusted version. Missing or discrepant data fails closed. A passing result means only that the checked-out commit passed the included tests.
 
 The parallel Base44-building chat owns the Devora app UI and product experience. Its integration boundary is tracked in Devora Issue #10. Neither workstream should edit the other's claimed files.
